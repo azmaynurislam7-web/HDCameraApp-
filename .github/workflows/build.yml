@@ -13,7 +13,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install Java and Cordova
         run: |
@@ -62,7 +62,11 @@ jobs:
 
           cordova platform add android@12.0.0 --nosave
           cordova plugin add cordova-plugin-camera --nosave
-          cordova build android --debug --no-daemon
+          
+          # Accept Android SDK licenses automatically to prevent license errors
+          yes | sdkmanager --licenses || true
+
+          cordova build android --debug --no-daemon --verbose
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

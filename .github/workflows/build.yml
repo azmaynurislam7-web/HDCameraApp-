@@ -13,7 +13,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install Java and Cordova
         run: |
@@ -60,8 +60,6 @@ jobs:
               </platform>
           </widget>
           EOF
-
-          cordova-plugin-file
 
           cordova platform add android --nosave
           cordova plugin add cordova-plugin-file --nosave

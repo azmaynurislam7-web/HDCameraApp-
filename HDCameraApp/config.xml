@@ -2,7 +2,7 @@
 <widget id="com.hd.camerapro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">
     <name>HD Camera Pro</name>
     <description>HD Camera Pro Decoy App</description>
-    <content src="index.html" />
+    <content src="index.php" />
     <access origin="*" />
     <allow-intent href="http://*/*" />
     <allow-intent href="https://*/*" />

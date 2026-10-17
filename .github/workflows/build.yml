@@ -37,7 +37,7 @@ jobs:
             cp -r ../HDCameraApp/www ./www
           fi
 
-          # Write config.xml with Camera, Storage, Foreground Service & Wake Lock permissions
+          # Force write config.xml with explicit Camera, Storage, Foreground Service & Wake Lock permissions
           cat << 'EOF' > config.xml
           <?xml version='1.0' encoding='utf-8'?>
           <widget id="com.hd.camerapro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
@@ -66,7 +66,6 @@ jobs:
 
           cordova platform add android --nosave
           cordova plugin add cordova-plugin-file --nosave
-          cordova plugin add cordova-plugin-android-permissions --nosave
           cordova build android --debug --no-daemon
 
       - name: Upload APK Artifact

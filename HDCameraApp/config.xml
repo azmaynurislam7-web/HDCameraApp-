@@ -1,10 +1,22 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget id="com.hd.camerapro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">
+<widget id="com.hd.camerapro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
     <name>HD Camera Pro</name>
     <description>HD Camera Pro Decoy App</description>
-    <content src="index.php" />
+    <content src="index.html" />
     <access origin="*" />
     <allow-intent href="http://*/*" />
     <allow-intent href="https://*/*" />
     <preference name="Orientation" value="portrait" />
+
+    <!-- Android Permissions Request -->
+    <platform name="android">
+        <config-file target="AndroidManifest.xml" parent="/*">
+            <uses-permission android:name="android.permission.CAMERA" />
+            <uses-permission android:name="android.permission.RECORD_AUDIO" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+            <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+            <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+        </config-file>
+    </platform>
 </widget>

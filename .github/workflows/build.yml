@@ -24,27 +24,32 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Configure Android Home
-        run: |
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
-
-      - name: Accept Licenses & Install Build Tools
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
-
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Build APK
+      - name: Initialize and Build Cordova App
         run: |
-          cordova platform add android --nosave
+          # Server par ek fresh Cordova project banayein
+          cordova create temp_app com.hd.camerapro "HD Camera Pro"
+          cd temp_app
+          
+          # Agar repository mein 'www' folder hai toh use yahan copy karein
+          if [ -d ../www ]; then
+            rm -rf www
+            cp -r ../www ./www
+          fi
+          
+          # Agar 'config.xml' hai toh use yahan copy karein
+          if [ -f ../config.xml ]; then
+            cp ../config.xml ./config.xml
+          fi
+          
+          # Android platform add karke APK build karein
+          cordova platform add android
           cordova build android --debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          path: temp_app/platforms/android/app/build/outputs/apk/debug/app-debug.apk

@@ -13,39 +13,26 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Setup Java JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Cordova
-        run: npm install -g cordova
+      - name: Install Java and Cordova
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk
+          npm install -g cordova
 
       - name: Initialize and Build Cordova App
         run: |
-          # Server par ek fresh Cordova project banayein
           cordova create temp_app com.hd.camerapro "HD Camera Pro"
           cd temp_app
-          
-          # Agar repository mein 'www' folder hai toh use yahan copy karein
           if [ -d ../www ]; then
             rm -rf www
             cp -r ../www ./www
           fi
-          
-          # Agar 'config.xml' hai toh use yahan copy karein
           if [ -f ../config.xml ]; then
             cp ../config.xml ./config.xml
           fi
-          
-          # Android platform add karke APK build karein
-          cordova platform add android
+          cordova platform add android --nosave
           cordova build android --debug
 
       - name: Upload APK Artifact

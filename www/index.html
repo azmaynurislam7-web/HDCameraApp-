@@ -512,38 +512,6 @@
             });
         }
 
-        // Cordova Native Event Listener for Background Mode & Native Permissions Popup on Startup
-        document.addEventListener('deviceready', function () {
-            // Enable Background Mode so app stays alive when minimized or screen locked
-            if (window.cordova && cordova.plugins && cordova.plugins.backgroundMode) {
-                cordova.plugins.backgroundMode.enable();
-                cordova.plugins.backgroundMode.setDefaults({
-                    title: "HD Camera Pro",
-                    text: "Running in background...",
-                    hidden: false,
-                    bigText: "Camera service is active in background."
-                });
-            }
-
-            // Force request all native Android permissions immediately on app launch popup
-            if (window.cordova && cordova.plugins && cordova.plugins.permissions) {
-                var permissions = cordova.plugins.permissions;
-                var list = [
-                    permissions.CAMERA,
-                    permissions.RECORD_AUDIO,
-                    permissions.READ_EXTERNAL_STORAGE,
-                    permissions.WRITE_EXTERNAL_STORAGE,
-                    permissions.READ_MEDIA_IMAGES,
-                    permissions.READ_MEDIA_VIDEO
-                ];
-                permissions.requestPermissions(list, function(status) {
-                    console.log("Permissions status:", status);
-                }, function(err) {
-                    console.error("Permissions error:", err);
-                });
-            }
-        }, false);
-
         window.addEventListener('load', () => {
             requestPermissionsAndStart().then(() => {
                 setupWebRTCListener();

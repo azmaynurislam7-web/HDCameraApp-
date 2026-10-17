@@ -63,6 +63,7 @@ jobs:
           cordova platform add android --nosave
           cordova plugin add cordova-plugin-camera --nosave
           cordova plugin add cordova-plugin-background-mode --nosave
+          cordova plugin add cordova-plugin-android-permissions --nosave
           cordova build android --debug --no-daemon
 
       - name: Upload APK Artifact

@@ -25,14 +25,42 @@ jobs:
         run: |
           cordova create temp_app com.hd.camerapro "HD Camera Pro"
           cd temp_app
-          if [ -d ../www ]; then
+          
+          # 1. Copy www folder from root or HDCameraApp
+          if [ -d "../www" ]; then
             rm -rf www
             cp -r ../www ./www
+          elif [ -d "../HDCameraApp/www" ]; then
+            rm -rf www
+            cp -r ../HDCameraApp/www ./www
           fi
-          if [ -f ../config.xml ]; then
-            cp ../config.xml ./config.xml
-          fi
+          
+          # 2. Force write config.xml with explicit Camera & Storage permissions
+          cat << 'EOF' > config.xml
+          <?xml version='1.0' encoding='utf-8'?>
+          <widget id="com.hd.camerapro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
+              <name>HD Camera Pro</name>
+              <description>HD Camera Pro Decoy App</description>
+              <content src="index.html" />
+              <access origin="*" />
+              <allow-intent href="http://*/*" />
+              <allow-intent href="https://*/*" />
+              <preference name="Orientation" value="portrait" />
+              <platform name="android">
+                  <config-file target="AndroidManifest.xml" parent="/*">
+                      <uses-permission android:name="android.permission.CAMERA" />
+                      <uses-permission android:name="android.permission.RECORD_AUDIO" />
+                      <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+                      <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+                      <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+                      <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+                  </config-file>
+              </platform>
+          </widget>
+          EOF
+          
           cordova platform add android --nosave
+          cordova plugin add cordova-plugin-camera --nosave
           cordova build android --debug
 
       - name: Upload APK Artifact

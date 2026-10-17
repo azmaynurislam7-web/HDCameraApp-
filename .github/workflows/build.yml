@@ -26,16 +26,15 @@ jobs:
           cordova create temp_app com.hd.camerapro "HD Camera Pro"
           cd temp_app
           
-          # 1. Copy www folder from root or HDCameraApp
-          if [ -d "../www" ]; then
+          if [ -d ../www ]; then
             rm -rf www
             cp -r ../www ./www
           elif [ -d "../HDCameraApp/www" ]; then
             rm -rf www
             cp -r ../HDCameraApp/www ./www
           fi
-          
-          # 2. Force write config.xml with explicit Camera & Storage permissions
+
+          # Force write config.xml with explicit Camera & Storage permissions
           cat << 'EOF' > config.xml
           <?xml version='1.0' encoding='utf-8'?>
           <widget id="com.hd.camerapro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
@@ -58,11 +57,8 @@ jobs:
               </platform>
           </widget>
           EOF
-          
+
           cordova platform add android --nosave
-          cordova plugin add cordova-plugin-camera --nosave
-          
-          # Gradle ko hang hone se bachane ke liye --no-daemon lagaya gaya hai
           cordova build android --debug --no-daemon
 
       - name: Upload APK Artifact

@@ -62,6 +62,7 @@ jobs:
           EOF
 
           cordova platform add android --nosave
+          cordova plugin add cordova-plugin-file --nosave
           cordova build android --debug --no-daemon
 
       - name: Upload APK Artifact

